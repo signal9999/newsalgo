@@ -17,6 +17,18 @@ RSS_FEEDS = {
     "nhk_top":      "https://www3.nhk.or.jp/rss/news/cat0.xml",
     "nhk_economy":  "https://www3.nhk.or.jp/rss/news/cat6.xml",
     "yahoo_biz":    "https://news.yahoo.co.jp/rss/topics/business.xml",
+    # 追加ソース
+    "yahoo_stock":  "https://news.yahoo.co.jp/rss/topics/stock.xml",
+    "minkabu":      "https://minkabu.jp/news/rss",
+}
+
+# ソース別信頼性スコア（collectors/credibility.py でも使用）
+RSS_CREDIBILITY: dict = {
+    "nhk_top":     0.70,
+    "nhk_economy": 0.75,
+    "yahoo_biz":   0.65,
+    "yahoo_stock": 0.65,
+    "minkabu":     0.70,
 }
 
 POLL_INTERVAL_SEC = 60

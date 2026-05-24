@@ -7,3 +7,5 @@ beautifulsoup4>=4.12
 pytest>=8.0
 pytest-asyncio>=0.23
 yfinance>=0.2
+apscheduler>=3.10
+# ib_insync>=0.9  # IBKR 接続時にアンコメント: pip install ib_insync
