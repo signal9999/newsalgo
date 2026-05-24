@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional
+from datetime import datetime, timezone, timedelta
 
 from collectors.tdnet import fetch_tdnet
 from collectors.rss import fetch_all_rss
@@ -13,6 +13,21 @@ from execution.paper_trade import PaperTrader
 from monitor.logger import StructuredLogger
 from monitor.alert import AlertManager
 from config.settings import ANTHROPIC_API_KEY, MAX_PIPELINE_CONCURRENCY, POLL_INTERVAL_SEC
+
+# 東京証券取引所 取引時間 (JST)
+_JST = timezone(timedelta(hours=9))
+_MARKET_OPEN  = (8, 0)   # 08:00 JST（適時開示の早朝開示あり）
+_MARKET_CLOSE = (15, 35) # 15:35 JST（引け後開示まで含む）
+
+
+def _is_market_hours() -> bool:
+    """TDnetポーリングを市場時間帯に集中させる。"""
+    now = datetime.now(_JST)
+    # 土日はスキップ
+    if now.weekday() >= 5:
+        return False
+    t = (now.hour, now.minute)
+    return _MARKET_OPEN <= t <= _MARKET_CLOSE
 
 
 class Orchestrator:
@@ -29,9 +44,20 @@ class Orchestrator:
     async def _collect_loop(self):
         while self._running:
             try:
-                tdnet_items = await fetch_tdnet()
+                # TDnetは市場時間帯のみポーリング（08:00〜15:35 JST・平日）
+                if _is_market_hours():
+                    tdnet_items = await fetch_tdnet()
+                    if tdnet_items:
+                        print(f"[TDnet] {len(tdnet_items)}件取得")
+                else:
+                    tdnet_items = []
+
                 rss_items = await fetch_all_rss()
-                for item in tdnet_items + rss_items:
+                all_items = tdnet_items + rss_items
+                if all_items:
+                    print(f"[Collector] {len(all_items)}件キューへ追加 "
+                          f"(tdnet={len(tdnet_items)}, rss={len(rss_items)})")
+                for item in all_items:
                     await self.queue.put(item)
             except Exception as e:
                 self.logger.log_error("collect_error", {"error": str(e)})
