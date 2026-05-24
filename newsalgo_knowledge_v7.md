@@ -219,19 +219,25 @@ HEALTHCHECK --interval=60s CMD python3 -c "import sys; sys.exit(0)"
 
 ---
 
-## 5c. Slack / LINE アラート設定
+## 5c. アラート通知設定
 
-`.env` に以下を追記すると自動送信が有効になる:
+> ⚠️ **LINE Notify は 2025年3月31日にサービス終了**。現在は利用不可。
+> Slack Webhook も未設定のため、現状はコンソール出力のみで運用中。
 
-```env
-# Slack Incoming Webhook URL（Slack App で取得）
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXXX/YYYY/ZZZZ
+**将来的に通知が必要になった場合の選択肢:**
 
-# LINE Notify トークン（https://notify-bot.line.me/ で取得）
-LINE_NOTIFY_TOKEN=your_token_here
-```
+| 手段 | 難易度 | 対応状況 |
+|---|---|---|
+| Discord Webhook | ★☆☆ 簡単 | コード変更が必要（未対応） |
+| Slack Incoming Webhook | ★☆☆ 簡単 | `.env` の `SLACK_WEBHOOK_URL` に設定するだけ |
+| LINE Messaging API | ★★★ 複雑 | LINE Notify の公式後継。要チャネル作成 |
 
-**送信タイミング:**
+**Slack を使う場合の手順:**
+1. https://api.slack.com/apps → Create App → Incoming Webhooks
+2. Webhook URL を取得
+3. `.env` の `SLACK_WEBHOOK_URL=` に設定
+
+**送信タイミング（Slack 設定済みの場合）:**
 - `CRITICAL`: エラー連発（60秒以内に5件超）
 - `WARNING`: デイリー損失が制限の80%到達
 - `INFO`: 強シグナル発生・パイプライン開始/停止
@@ -524,7 +530,7 @@ SLACK_WEBHOOK_URL=https://... LINE_NOTIFY_TOKEN=xxx bash scripts/add_github_secr
 
 ## 15. 着手予定（次回）
 
-- [ ] Slack/LINE: 実トークンを `.env` に設定して本番通知テスト
+- [ ] 通知: LINE Notify は終了済み。Slack Webhook か Discord Webhook を採用する場合は `.env` に設定（任意）
 - [ ] Phase 3: IBKR ペーパートレード口座で実接続テスト（`python3 scripts/test_ibkr.py`）
 - [ ] VPS デプロイ: `bash deploy/setup_vps.sh` を実サーバーで実行 or GitHub Secrets に VPS 情報設定
 - [ ] バックテスト: 実 JSONL ログが蓄積されたら精度評価（`python3 run_backtest.py --mode jsonl`）
