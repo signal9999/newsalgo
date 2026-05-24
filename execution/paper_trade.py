@@ -9,6 +9,8 @@ import logging
 from pathlib import Path
 from datetime import datetime, timezone
 
+_price_cache: dict = {}  # symbol → (price, fetched_at)
+
 from execution.broker import BrokerBase, Order, OrderResult
 
 logger = logging.getLogger(__name__)
@@ -144,26 +146,59 @@ class PaperTrader(BrokerBase):
         )
         return result
 
+    # ------------------------------------------------------------------
+    # 現在株価取得（yfinance・TTL 60秒キャッシュ）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _fetch_price(symbol: str) -> float:
+        """yfinance で現在値を取得。失敗時は 0.0。TTL 60秒のキャッシュ付き。"""
+        import time
+        now = time.time()
+        cached = _price_cache.get(symbol)
+        if cached and now - cached[1] < 60:
+            return cached[0]
+        try:
+            import yfinance as yf
+            hist = yf.Ticker(symbol).history(period="2d")
+            if hist.empty:
+                return 0.0
+            raw = hist["Close"].iloc[-1]
+            price = float(raw.iloc[0]) if hasattr(raw, "iloc") else float(raw)
+            _price_cache[symbol] = (price, now)
+            return price
+        except Exception:
+            return 0.0
+
     async def get_position(self, symbol: str) -> dict:
         pos = self.positions.get(symbol)
         if pos is None:
-            return {"symbol": symbol, "quantity": 0.0, "avg_price": 0.0, "unrealized_pnl": 0.0}
-        # unrealized は現在価格が不明なためゼロ表示（将来: yfinance で取得）
+            return {"symbol": symbol, "quantity": 0.0, "avg_price": 0.0,
+                    "current_price": 0.0, "unrealized_pnl": 0.0}
+        current = self._fetch_price(symbol)
+        unrealized = (current - pos["avg_price"]) * pos["quantity"] if current else 0.0
         return {
             "symbol":          symbol,
             "quantity":        pos["quantity"],
             "avg_price":       pos["avg_price"],
-            "unrealized_pnl":  0.0,
+            "current_price":   current,
+            "unrealized_pnl":  unrealized,
         }
 
     async def get_account(self) -> dict:
+        unrealized = 0.0
+        for symbol, pos in self.positions.items():
+            current = self._fetch_price(symbol)
+            if current:
+                unrealized += (current - pos["avg_price"]) * pos["quantity"]
+        total = self.balance + unrealized
         return {
             "balance":        self.balance,
             "realized_pnl":   self.realized_pnl,
-            "unrealized_pnl": 0.0,
-            "total":          self.balance,
+            "unrealized_pnl": unrealized,
+            "total":          total,
             "initial":        INITIAL_BALANCE,
-            "return_pct":     (self.balance - INITIAL_BALANCE) / INITIAL_BALANCE * 100,
+            "return_pct":     (total - INITIAL_BALANCE) / INITIAL_BALANCE * 100,
         }
 
     async def cancel_order(self, order_id: str) -> bool:

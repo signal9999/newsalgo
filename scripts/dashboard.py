@@ -56,6 +56,33 @@ def load_all_jsonl(directory: Path, limit: int = 0) -> list:
     return items[-limit:] if limit else items
 
 
+_STATE_FILE = Path(__file__).parent.parent / "logs" / "paper_state.json"
+
+
+def load_paper_state() -> dict:
+    """logs/paper_state.json を読み込む。"""
+    if not _STATE_FILE.exists():
+        return {}
+    try:
+        with open(_STATE_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def fetch_price(symbol: str) -> float:
+    """yfinance で現在値を取得。失敗時は 0.0。"""
+    try:
+        import yfinance as yf
+        hist = yf.Ticker(symbol).history(period="2d")
+        if hist.empty:
+            return 0.0
+        raw = hist["Close"].iloc[-1]
+        return float(raw.iloc[0]) if hasattr(raw, "iloc") else float(raw)
+    except Exception:
+        return 0.0
+
+
 def redis_status() -> str:
     try:
         import redis
@@ -121,6 +148,36 @@ def print_dashboard(tail: int = 10):
             print(f"║{line:<{w-2}}║")
     else:
         print(f"║{'  シグナルログなし':^{w-2}}║")
+    print("╠" + "═" * (w - 2) + "╣")
+
+    # ── オープンポジション ────────────────────────────────────────────────
+    state     = load_paper_state()
+    positions = state.get("positions", {})
+    balance   = state.get("balance",   0.0)
+    r_pnl     = state.get("realized_pnl", 0.0)
+    print(f"║  [ オープンポジション ]{'':>{w-25}}║")
+    if positions:
+        total_unrealized = 0.0
+        for sym, pos in positions.items():
+            qty      = pos.get("quantity", 0)
+            avg      = pos.get("avg_price", 0)
+            current  = fetch_price(sym)
+            unreal   = (current - avg) * qty if current else 0.0
+            total_unrealized += unreal
+            sign_u   = "+" if unreal >= 0 else ""
+            cur_str  = f"{current:,.0f}" if current else "取得失敗"
+            line = (f"  {sym:<10}  qty={int(qty):>5}  "
+                    f"avg={avg:>8,.0f}  現在={cur_str:>8}  "
+                    f"含損益={sign_u}¥{unreal:,.0f}")
+            print(f"║{line:<{w-2}}║")
+        sign_t = "+" if total_unrealized >= 0 else ""
+        total  = balance + total_unrealized
+        print(f"║  {'─'*50:<{w-4}}  ║")
+        print(f"║  残高={balance:>12,.0f}  含損益合計={sign_t}¥{total_unrealized:,.0f}  "
+              f"合計=¥{total:,.0f}{'':>{max(0,w-57)}}║")
+    else:
+        print(f"║  残高=¥{balance:,.0f}  実現損益={'+' if r_pnl>=0 else ''}¥{r_pnl:,.0f}"
+              f"  ポジションなし{'':>{max(0,w-50)}}║")
     print("╠" + "═" * (w - 2) + "╣")
 
     # ── 損益サマリー ──────────────────────────────────────────────────────
