@@ -1,0 +1,47 @@
+name: NewsAlgo Daily Run
+
+on:
+  schedule:
+    - cron: '0 23 * * *'   # JST 08:00
+    - cron: '30 23 * * *'  # JST 08:30
+  workflow_dispatch:         # テスト用手動実行
+
+jobs:
+  run-newsalgo:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Tokyo
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create .env file
+        run: |
+          cat <<EOF > .env
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          REDIS_URL=redis://localhost:6379
+          PAPER_TRADE=true
+          MAX_POSITION_PCT=0.05
+          DAILY_LOSS_LIMIT_PCT=0.10
+          SIGNAL_THRESHOLD=0.6
+          EOF
+
+      - name: Run NewsAlgo (30min timeout)
+        run: timeout 1800 python main.py || true
+
+      - name: Upload logs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: newsalgo-logs-${{ github.run_id }}
+          path: logs/
+          retention-days: 7
+          if-no-files-found: warn
