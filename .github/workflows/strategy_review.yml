@@ -1,0 +1,107 @@
+name: Autonomous Strategy Review
+
+on:
+  schedule:
+    # 毎週月曜 JST 08:00（UTC 日曜 23:00）
+    - cron: "0 23 * * 0"
+    # 毎日 JST 09:00（UTC 00:00）— 指標監視のみ
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "実行モード"
+        required: false
+        default: "normal"
+        type: choice
+        options:
+          - normal
+          - dry-run
+          - force
+
+jobs:
+  review:
+    name: Strategy Review & Auto-Optimize
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Download logs artifact (if exists)
+        uses: dawidd6/action-download-artifact@v3
+        continue-on-error: true
+        with:
+          name: newsalgo-logs
+          path: logs/
+          workflow: newsalgo.yml
+          if_no_artifact_found: warn
+
+      - name: Run autonomous review
+        id: review
+        env:
+          OPENAI_API_KEY:    ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SIGNAL_THRESHOLD:  ${{ vars.SIGNAL_THRESHOLD || '0.7' }}
+        run: |
+          MODE_ARG=""
+          if [[ "${{ github.event.inputs.mode }}" == "dry-run" ]]; then
+            MODE_ARG="--dry-run"
+          elif [[ "${{ github.event.inputs.mode }}" == "force" ]]; then
+            MODE_ARG="--force"
+          fi
+          python3 scripts/autonomous_review.py $MODE_ARG 2>&1 | tee /tmp/review_output.txt
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          tail -30 /tmp/review_output.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Configure git for auto-commit
+        run: |
+          git config user.name  "NewsAlgo Bot"
+          git config user.email "bot@newsalgo.auto"
+
+      - name: Push .env changes if any
+        run: |
+          if git diff --quiet .env 2>/dev/null; then
+            echo "✅ .env に変更なし"
+          else
+            git add .env
+            git commit -m "auto: strategy_review $(date -u +%Y-%m-%d)"
+            git push origin main
+            echo "✅ .env 変更をプッシュしました"
+          fi
+
+      - name: Upload strategy log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategy-log-${{ github.run_id }}
+          path: logs/strategy_log.jsonl
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Notify Slack on degradation
+        if: failure() || contains(steps.review.outputs.output, '⚠️')
+        uses: slackapi/slack-github-action@v1.26.0
+        continue-on-error: true
+        with:
+          payload: |
+            {
+              "text": "⚠️ *NewsAlgo 戦略レビュー通知*\n```${{ steps.review.outputs.output }}```"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
