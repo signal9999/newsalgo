@@ -384,9 +384,29 @@ make test / make backtest / make optimize / make run / make logs
 
 ---
 
-## 14. 着手予定（次回）
+## 14. Web ダッシュボード
 
-- [ ] Phase 3: IBKR TWS を起動して実接続テスト（`python3 scripts/test_ibkr.py`）
+**URL: https://signal9media.net/newsalgo/**
+
+`scripts/generate_web_dashboard.py` が JSONL ログから HTML を生成。cron で 30 分ごとに自動更新。
+
+**表示内容:** Balance / Return / Win Rate / News 件数 / Open Positions / Recent Signals / News Sources
+
+**デザイン:** Inter + JetBrains Mono / 深黒 `#05080f` / インディゴアクセント / 4列 KPI グリッド / glow パルスアニメーション
+
+```bash
+# 手動再生成
+python3 scripts/generate_web_dashboard.py
+
+# ローカル確認用
+python3 scripts/generate_web_dashboard.py --out /tmp/dash
+```
+
+---
+
+## 15. 着手予定（次回）
+
+- [ ] Phase 3: IBKR IB Gateway でログイン → 実接続テスト（口座承認翌日以降）
 - [ ] バックテスト: Mixhost のログが蓄積したら精度評価（`python3 run_backtest.py --mode jsonl`）
 - [ ] 通知: Slack Webhook URL を `.env` に設定（任意）
 - [ ] LLM モード: KW と精度差が出たときに本番適用検討
