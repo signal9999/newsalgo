@@ -61,185 +61,221 @@ def load_state() -> dict:
         return {}
 
 
-def level_badge(level: str) -> str:
-    colors = {"STRONG": "#ff4444", "MEDIUM": "#ffaa00", "NONE": "#555"}
-    c = colors.get(level, "#555")
-    return f'<span style="background:{c};color:#fff;padding:2px 8px;border-radius:4px;font-size:0.8em;">{level}</span>'
+def level_dot(level: str) -> str:
+    colors = {"STRONG": "#ef4444", "MEDIUM": "#f59e0b"}
+    c = colors.get(level, "#374151")
+    label = {"STRONG": "STRONG", "MEDIUM": "MED"}.get(level, level)
+    return (f'<span style="display:inline-flex;align-items:center;gap:5px;">'
+            f'<span style="width:6px;height:6px;border-radius:50%;background:{c};'
+            f'box-shadow:0 0 6px {c}88;"></span>'
+            f'<span style="color:{c};font-size:0.78em;letter-spacing:0.08em;">{label}</span></span>')
 
 
-def dir_badge(direction: str) -> str:
+def dir_chip(direction: str) -> str:
     if direction == "bullish":
-        return '<span style="color:#4caf50;">▲ 強気</span>'
+        return '<span style="color:#10b981;font-size:0.85em;">↑ 強気</span>'
     elif direction == "bearish":
-        return '<span style="color:#f44336;">▼ 弱気</span>'
-    return '<span style="color:#888;">→ 中立</span>'
+        return '<span style="color:#f87171;font-size:0.85em;">↓ 弱気</span>'
+    return '<span style="color:#6b7280;font-size:0.85em;">— 中立</span>'
 
 
 def generate_html(out_dir: Path):
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # データ読み込み
-    signals = load_all_jsonl(_LOG / "signal")
-    orders  = load_all_jsonl(_LOG / "order")
-    news    = load_all_jsonl(_LOG / "news")
-    state   = load_state()
+    signals  = load_all_jsonl(_LOG / "signal")
+    orders   = load_all_jsonl(_LOG / "order")
+    news     = load_all_jsonl(_LOG / "news")
+    state    = load_state()
 
-    # 損益計算
     total_pnl = sum(o.get("pnl", 0) or 0 for o in orders)
-    wins   = sum(1 for o in orders if (o.get("pnl") or 0) > 0)
-    losses = sum(1 for o in orders if (o.get("pnl") or 0) < 0)
-    trades = wins + losses
-    win_rate = wins / trades * 100 if trades > 0 else 0.0
-    balance  = state.get("balance", 1_000_000)
-    r_pnl    = state.get("realized_pnl", 0)
+    wins      = sum(1 for o in orders if (o.get("pnl") or 0) > 0)
+    losses    = sum(1 for o in orders if (o.get("pnl") or 0) < 0)
+    trades    = wins + losses
+    win_rate  = wins / trades * 100 if trades > 0 else 0.0
+    balance   = state.get("balance", 1_000_000)
+    r_pnl     = state.get("realized_pnl", 0)
     positions = state.get("positions", {})
+    ret_pct   = (balance - 1_000_000) / 1_000_000 * 100
 
-    # シグナル（強いもの上位20件）
-    strong_signals = [s for s in signals if s.get("level") in ("STRONG", "MEDIUM")][-20:]
+    strong_signals = [s for s in signals if s.get("level") in ("STRONG", "MEDIUM")][-15:]
 
-    # ソース別統計
     src_count = defaultdict(int)
     for item in news:
         src_count[item.get("source", "unknown")] += 1
-    src_top = sorted(src_count.items(), key=lambda x: -x[1])[:8]
+    src_top = sorted(src_count.items(), key=lambda x: -x[1])[:6]
 
     # ポジション行
     pos_rows = ""
     if positions:
         for sym, pos in positions.items():
-            pos_rows += f"""
-            <tr>
-              <td>{sym}</td>
-              <td>{int(pos.get('quantity', 0))}</td>
-              <td>¥{pos.get('avg_price', 0):,.0f}</td>
-              <td>-</td>
-              <td>-</td>
-            </tr>"""
+            pos_rows += (f'<tr><td class="mono">{sym}</td>'
+                         f'<td>{int(pos.get("quantity",0))}</td>'
+                         f'<td class="mono">¥{pos.get("avg_price",0):,.0f}</td>'
+                         f'<td class="dim">—</td><td class="dim">—</td></tr>')
     else:
-        pos_rows = '<tr><td colspan="5" style="text-align:center;color:#666;">ポジションなし</td></tr>'
+        pos_rows = '<tr><td colspan="5" class="empty">No open positions</td></tr>'
 
     # シグナル行
     sig_rows = ""
     for s in reversed(strong_signals):
-        ts   = str(s.get("timestamp", ""))[:16].replace("T", " ")
-        lvl  = level_badge(s.get("level", ""))
-        dr   = dir_badge(s.get("direction", ""))
-        syms = ", ".join(s.get("affected_symbols", [])) or "—"
+        ts   = str(s.get("timestamp",""))[:16].replace("T"," ")
+        syms = ", ".join(s.get("affected_symbols",[])) or "—"
         sc   = s.get("score", 0)
-        sig_rows += f"""
-        <tr>
-          <td style="color:#888;font-size:0.85em;">{ts}</td>
-          <td>{lvl}</td>
-          <td>{dr}</td>
-          <td>{syms}</td>
-          <td>{sc:.2f}</td>
+        bar_w = int(sc * 60)
+        sig_rows += f"""<tr>
+          <td class="dim ts">{ts}</td>
+          <td>{level_dot(s.get("level",""))}</td>
+          <td>{dir_chip(s.get("direction",""))}</td>
+          <td class="mono sym">{syms}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div style="width:60px;height:3px;background:#1f2937;border-radius:2px;">
+                <div style="width:{bar_w}px;height:3px;background:#6366f1;border-radius:2px;"></div>
+              </div>
+              <span class="mono" style="font-size:0.8em;color:#9ca3af;">{sc:.2f}</span>
+            </div>
+          </td>
         </tr>"""
     if not sig_rows:
-        sig_rows = '<tr><td colspan="5" style="text-align:center;color:#666;">シグナルなし</td></tr>'
+        sig_rows = '<tr><td colspan="5" class="empty">No signals yet</td></tr>'
 
-    # ソース統計バー
-    max_cnt = src_top[0][1] if src_top else 1
+    # ソースバー
+    max_cnt  = src_top[0][1] if src_top else 1
     src_html = ""
     for src, cnt in src_top:
         pct = cnt / max_cnt * 100
         src_html += f"""
-        <div style="margin:6px 0;">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <span style="width:140px;font-size:0.85em;color:#ccc;">{src}</span>
-            <div style="flex:1;background:#222;border-radius:4px;height:14px;">
-              <div style="width:{pct:.0f}%;background:#4a9eff;border-radius:4px;height:14px;"></div>
-            </div>
-            <span style="width:50px;text-align:right;font-size:0.85em;color:#aaa;">{cnt}件</span>
-          </div>
+        <div class="src-row">
+          <span class="src-name">{src}</span>
+          <div class="src-track"><div class="src-fill" style="width:{pct:.0f}%"></div></div>
+          <span class="src-cnt">{cnt}</span>
         </div>"""
 
-    pnl_color  = "#4caf50" if total_pnl >= 0 else "#f44336"
-    sign       = "+" if total_pnl >= 0 else ""
-    bal_color  = "#4caf50" if balance >= 1_000_000 else "#f44336"
+    pnl_c  = "#10b981" if r_pnl  >= 0 else "#f87171"
+    bal_c  = "#10b981" if balance >= 1_000_000 else "#f87171"
+    ret_c  = "#10b981" if ret_pct >= 0 else "#f87171"
+    psign  = "+" if r_pnl  >= 0 else ""
+    rsign  = "+" if ret_pct >= 0 else ""
 
     html = f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="300">
-<title>NewsAlgo Dashboard</title>
+<title>NewsAlgo</title>
 <style>
-  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          background: #0d1117; color: #e6edf3; padding: 16px; }}
-  h1 {{ color: #58a6ff; font-size: 1.4em; margin-bottom: 4px; }}
-  .subtitle {{ color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }}
-  .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }}
-  .card {{ background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 16px; }}
-  .card h3 {{ color: #8b949e; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }}
-  .card .val {{ font-size: 1.6em; font-weight: bold; }}
-  .card .sub {{ color: #8b949e; font-size: 0.82em; margin-top: 4px; }}
-  .section {{ background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 16px; margin-bottom: 16px; }}
-  .section h2 {{ color: #58a6ff; font-size: 1em; margin-bottom: 12px; border-bottom: 1px solid #30363d; padding-bottom: 8px; }}
-  table {{ width: 100%; border-collapse: collapse; font-size: 0.88em; }}
-  th {{ color: #8b949e; text-align: left; padding: 6px 8px; border-bottom: 1px solid #30363d; font-weight: normal; }}
-  td {{ padding: 7px 8px; border-bottom: 1px solid #21262d; }}
-  tr:last-child td {{ border-bottom: none; }}
-  tr:hover td {{ background: #1c2128; }}
-  .updated {{ color: #555; font-size: 0.78em; text-align: right; margin-top: 16px; }}
-  @media (max-width: 500px) {{ .grid {{ grid-template-columns: 1fr 1fr; }} }}
+:root{{
+  --bg:#080c14;--surface:#0e1420;--border:#1a2236;
+  --text:#e2e8f0;--muted:#4b5563;--dim:#6b7280;
+  --accent:#6366f1;--green:#10b981;--red:#f87171;--amber:#f59e0b;
+}}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
+      background:var(--bg);color:var(--text);min-height:100vh;padding:24px 20px 40px}}
+.header{{display:flex;align-items:baseline;justify-content:space-between;
+         margin-bottom:32px;flex-wrap:wrap;gap:8px}}
+.logo{{font-size:1.05em;font-weight:600;letter-spacing:0.15em;
+       text-transform:uppercase;color:var(--accent)}}
+.live{{display:flex;align-items:center;gap:6px;font-size:0.75em;color:var(--dim)}}
+.pulse{{width:6px;height:6px;border-radius:50%;background:var(--green);
+        animation:pulse 2s infinite}}
+@keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.3}}}}
+.kpi{{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+      gap:1px;background:var(--border);border:1px solid var(--border);
+      border-radius:12px;overflow:hidden;margin-bottom:24px}}
+.kpi-item{{background:var(--surface);padding:20px 18px}}
+.kpi-label{{font-size:0.7em;letter-spacing:0.1em;text-transform:uppercase;
+            color:var(--muted);margin-bottom:8px}}
+.kpi-val{{font-size:1.55em;font-weight:700;line-height:1;letter-spacing:-0.02em}}
+.kpi-sub{{font-size:0.72em;color:var(--dim);margin-top:5px}}
+.block{{background:var(--surface);border:1px solid var(--border);
+        border-radius:12px;padding:20px;margin-bottom:16px}}
+.block-title{{font-size:0.7em;letter-spacing:0.12em;text-transform:uppercase;
+              color:var(--muted);margin-bottom:16px}}
+table{{width:100%;border-collapse:collapse;font-size:0.84em}}
+th{{color:var(--muted);text-align:left;padding:0 10px 10px;
+    font-size:0.72em;letter-spacing:0.08em;text-transform:uppercase;font-weight:400}}
+td{{padding:10px;border-top:1px solid var(--border);vertical-align:middle}}
+tr:first-child td{{border-top:none}}
+.mono{{font-family:'SF Mono',Monaco,monospace;font-size:0.9em}}
+.dim{{color:var(--dim)}}
+.ts{{font-size:0.78em;white-space:nowrap}}
+.sym{{color:#a5b4fc}}
+.empty{{text-align:center;color:var(--muted);padding:20px;font-size:0.83em}}
+.src-row{{display:flex;align-items:center;gap:10px;margin-bottom:10px}}
+.src-name{{width:130px;font-size:0.8em;color:var(--dim);
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.src-track{{flex:1;height:2px;background:var(--border);border-radius:1px}}
+.src-fill{{height:2px;background:var(--accent);border-radius:1px;
+           transition:width .3s}}
+.src-cnt{{width:36px;text-align:right;font-size:0.75em;color:var(--muted);
+          font-family:'SF Mono',Monaco,monospace}}
+.footer{{text-align:center;font-size:0.72em;color:var(--muted);
+         letter-spacing:0.05em;margin-top:32px}}
+@media(max-width:480px){{
+  .kpi{{grid-template-columns:1fr 1fr}}
+  .header{{margin-bottom:20px}}
+}}
 </style>
 </head>
 <body>
 
-<h1>📊 NewsAlgo Dashboard</h1>
-<div class="subtitle">ニュース駆動型自動売買システム — ペーパートレードモード</div>
-
-<!-- KPI カード -->
-<div class="grid">
-  <div class="card">
-    <h3>残高</h3>
-    <div class="val" style="color:{bal_color};">¥{balance:,.0f}</div>
-    <div class="sub">初期: ¥1,000,000</div>
-  </div>
-  <div class="card">
-    <h3>実現損益</h3>
-    <div class="val" style="color:{pnl_color};">{sign}¥{r_pnl:,.0f}</div>
-    <div class="sub">累計</div>
-  </div>
-  <div class="card">
-    <h3>勝率</h3>
-    <div class="val">{win_rate:.1f}%</div>
-    <div class="sub">勝:{wins} / 負:{losses} / 計:{trades}件</div>
-  </div>
-  <div class="card">
-    <h3>ニュース取得数</h3>
-    <div class="val">{len(news):,}</div>
-    <div class="sub">シグナル: {len(signals):,}件</div>
+<div class="header">
+  <div class="logo">NewsAlgo</div>
+  <div class="live">
+    <div class="pulse"></div>
+    Paper Trading
   </div>
 </div>
 
-<!-- オープンポジション -->
-<div class="section">
-  <h2>📈 オープンポジション</h2>
+<div class="kpi">
+  <div class="kpi-item">
+    <div class="kpi-label">Balance</div>
+    <div class="kpi-val" style="color:{bal_c}">¥{balance:,.0f}</div>
+    <div class="kpi-sub">Initial ¥1,000,000</div>
+  </div>
+  <div class="kpi-item">
+    <div class="kpi-label">Return</div>
+    <div class="kpi-val" style="color:{ret_c}">{rsign}{ret_pct:.2f}%</div>
+    <div class="kpi-sub">Realized {psign}¥{r_pnl:,.0f}</div>
+  </div>
+  <div class="kpi-item">
+    <div class="kpi-label">Win Rate</div>
+    <div class="kpi-val">{win_rate:.1f}%</div>
+    <div class="kpi-sub">{wins}W / {losses}L / {trades} trades</div>
+  </div>
+  <div class="kpi-item">
+    <div class="kpi-label">News Collected</div>
+    <div class="kpi-val">{len(news):,}</div>
+    <div class="kpi-sub">{len(signals):,} signals generated</div>
+  </div>
+</div>
+
+<div class="block">
+  <div class="block-title">Open Positions</div>
   <table>
-    <tr><th>銘柄</th><th>数量</th><th>平均取得単価</th><th>現在値</th><th>含損益</th></tr>
+    <tr>
+      <th>Symbol</th><th>Qty</th><th>Avg Cost</th><th>Last</th><th>Unrealized</th>
+    </tr>
     {pos_rows}
   </table>
 </div>
 
-<!-- 最新シグナル -->
-<div class="section">
-  <h2>⚡ 最新シグナル（MEDIUM以上 直近20件）</h2>
+<div class="block">
+  <div class="block-title">Recent Signals — Medium &amp; Strong</div>
   <table>
-    <tr><th>日時</th><th>レベル</th><th>方向</th><th>銘柄</th><th>スコア</th></tr>
+    <tr><th>Time</th><th>Level</th><th>Direction</th><th>Symbol</th><th>Score</th></tr>
     {sig_rows}
   </table>
 </div>
 
-<!-- ソース統計 -->
-<div class="section">
-  <h2>📰 ニュースソース別取得数</h2>
+<div class="block">
+  <div class="block-title">News Sources</div>
   {src_html}
 </div>
 
-<div class="updated">最終更新: {now_jst()} （5分ごとに自動更新）</div>
+<div class="footer">Updated {now_jst()} &nbsp;·&nbsp; Auto-refresh every 5 min</div>
 
 </body>
 </html>"""
