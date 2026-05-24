@@ -165,57 +165,181 @@ def generate_html(out_dir: Path):
 <meta http-equiv="refresh" content="300">
 <title>NewsAlgo</title>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 :root{{
-  --bg:#080c14;--surface:#0e1420;--border:#1a2236;
-  --text:#e2e8f0;--muted:#4b5563;--dim:#6b7280;
-  --accent:#6366f1;--green:#10b981;--red:#f87171;--amber:#f59e0b;
+  --bg:#05080f;
+  --s1:#0a0f1c;
+  --s2:#0f1525;
+  --line:#1c2640;
+  --text:#cbd5e1;
+  --muted:#475569;
+  --dim:#334155;
+  --accent:#818cf8;
+  --accent2:#6366f1;
+  --green:#34d399;
+  --red:#f87171;
+  --amber:#fbbf24;
 }}
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
-      background:var(--bg);color:var(--text);min-height:100vh;padding:24px 20px 40px}}
-.header{{display:flex;align-items:baseline;justify-content:space-between;
-         margin-bottom:32px;flex-wrap:wrap;gap:8px}}
-.logo{{font-size:1.05em;font-weight:600;letter-spacing:0.15em;
-       text-transform:uppercase;color:var(--accent)}}
-.live{{display:flex;align-items:center;gap:6px;font-size:0.75em;color:var(--dim)}}
-.pulse{{width:6px;height:6px;border-radius:50%;background:var(--green);
-        animation:pulse 2s infinite}}
-@keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.3}}}}
-.kpi{{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
-      gap:1px;background:var(--border);border:1px solid var(--border);
-      border-radius:12px;overflow:hidden;margin-bottom:24px}}
-.kpi-item{{background:var(--surface);padding:20px 18px}}
-.kpi-label{{font-size:0.7em;letter-spacing:0.1em;text-transform:uppercase;
-            color:var(--muted);margin-bottom:8px}}
-.kpi-val{{font-size:1.55em;font-weight:700;line-height:1;letter-spacing:-0.02em}}
-.kpi-sub{{font-size:0.72em;color:var(--dim);margin-top:5px}}
-.block{{background:var(--surface);border:1px solid var(--border);
-        border-radius:12px;padding:20px;margin-bottom:16px}}
-.block-title{{font-size:0.7em;letter-spacing:0.12em;text-transform:uppercase;
-              color:var(--muted);margin-bottom:16px}}
-table{{width:100%;border-collapse:collapse;font-size:0.84em}}
-th{{color:var(--muted);text-align:left;padding:0 10px 10px;
-    font-size:0.72em;letter-spacing:0.08em;text-transform:uppercase;font-weight:400}}
-td{{padding:10px;border-top:1px solid var(--border);vertical-align:middle}}
-tr:first-child td{{border-top:none}}
-.mono{{font-family:'SF Mono',Monaco,monospace;font-size:0.9em}}
+html{{scroll-behavior:smooth}}
+body{{
+  font-family:'Inter',system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  max-width:900px;
+  margin:0 auto;
+  padding:0 20px 60px;
+}}
+
+/* top accent bar */
+body::before{{
+  content:'';display:block;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent2),transparent);
+  margin-bottom:0;
+}}
+
+/* ── Header ── */
+.header{{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:28px 0 36px;
+}}
+.logo{{
+  font-size:0.8em;font-weight:600;
+  letter-spacing:0.25em;text-transform:uppercase;
+  color:var(--accent);
+}}
+.status{{
+  display:flex;align-items:center;gap:8px;
+  font-size:0.7em;letter-spacing:0.08em;
+  text-transform:uppercase;color:var(--muted);
+}}
+.dot{{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 8px var(--green);
+  animation:blink 2.4s ease-in-out infinite;
+}}
+@keyframes blink{{0%,100%{{opacity:1}}50%{{opacity:.25}}}}
+
+/* ── KPI strip ── */
+.kpi{{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  border:1px solid var(--line);
+  border-radius:14px;
+  overflow:hidden;
+  margin-bottom:20px;
+  background:var(--line);
+  gap:1px;
+}}
+.kpi-item{{
+  background:var(--s1);
+  padding:22px 20px;
+}}
+.kpi-label{{
+  font-size:0.62em;letter-spacing:0.12em;
+  text-transform:uppercase;color:var(--muted);
+  margin-bottom:10px;
+}}
+.kpi-val{{
+  font-size:1.5em;font-weight:600;
+  letter-spacing:-0.03em;line-height:1;
+  font-feature-settings:'tnum';
+}}
+.kpi-sub{{
+  font-size:0.68em;color:var(--muted);
+  margin-top:6px;font-family:'JetBrains Mono',monospace;
+}}
+
+/* ── Blocks ── */
+.block{{
+  border:1px solid var(--line);
+  border-radius:14px;
+  overflow:hidden;
+  margin-bottom:14px;
+  background:var(--s1);
+}}
+.block-head{{
+  padding:14px 20px;
+  border-bottom:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;
+}}
+.block-title{{
+  font-size:0.62em;letter-spacing:0.14em;
+  text-transform:uppercase;color:var(--muted);font-weight:500;
+}}
+.block-body{{padding:0 4px}}
+
+/* ── Table ── */
+table{{width:100%;border-collapse:collapse;font-size:0.82em}}
+th{{
+  color:var(--dim);text-align:left;
+  padding:11px 16px;
+  font-size:0.68em;letter-spacing:0.1em;
+  text-transform:uppercase;font-weight:400;
+  border-bottom:1px solid var(--line);
+}}
+td{{
+  padding:12px 16px;
+  border-bottom:1px solid var(--line);
+  vertical-align:middle;
+}}
+tr:last-child td{{border-bottom:none}}
+tbody tr:hover td{{background:var(--s2);}}
+
+/* ── Util ── */
+.mono{{font-family:'JetBrains Mono',monospace;font-size:0.88em}}
+.sym{{color:var(--accent);font-weight:500}}
 .dim{{color:var(--dim)}}
-.ts{{font-size:0.78em;white-space:nowrap}}
-.sym{{color:#a5b4fc}}
-.empty{{text-align:center;color:var(--muted);padding:20px;font-size:0.83em}}
-.src-row{{display:flex;align-items:center;gap:10px;margin-bottom:10px}}
-.src-name{{width:130px;font-size:0.8em;color:var(--dim);
-           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
-.src-track{{flex:1;height:2px;background:var(--border);border-radius:1px}}
-.src-fill{{height:2px;background:var(--accent);border-radius:1px;
-           transition:width .3s}}
-.src-cnt{{width:36px;text-align:right;font-size:0.75em;color:var(--muted);
-          font-family:'SF Mono',Monaco,monospace}}
-.footer{{text-align:center;font-size:0.72em;color:var(--muted);
-         letter-spacing:0.05em;margin-top:32px}}
-@media(max-width:480px){{
-  .kpi{{grid-template-columns:1fr 1fr}}
-  .header{{margin-bottom:20px}}
+.ts{{color:var(--muted);font-size:0.8em;white-space:nowrap;font-family:'JetBrains Mono',monospace}}
+.empty{{
+  text-align:center;color:var(--dim);
+  padding:28px;font-size:0.8em;letter-spacing:0.05em;
+}}
+
+/* ── Source bars ── */
+.src-row{{
+  display:flex;align-items:center;gap:14px;
+  padding:10px 20px;
+  border-bottom:1px solid var(--line);
+}}
+.src-row:last-child{{border-bottom:none}}
+.src-name{{
+  width:120px;font-size:0.78em;
+  color:var(--muted);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;
+  letter-spacing:0.02em;
+}}
+.src-track{{
+  flex:1;height:1px;
+  background:var(--line);
+  border-radius:1px;position:relative;
+}}
+.src-fill{{
+  position:absolute;top:0;left:0;
+  height:1px;background:var(--accent2);
+  border-radius:1px;
+}}
+.src-cnt{{
+  width:32px;text-align:right;
+  font-size:0.72em;color:var(--dim);
+  font-family:'JetBrains Mono',monospace;
+}}
+
+/* ── Footer ── */
+.footer{{
+  text-align:center;
+  font-size:0.68em;color:var(--dim);
+  letter-spacing:0.06em;margin-top:40px;
+  text-transform:uppercase;
+}}
+
+/* ── Mobile ── */
+@media(max-width:600px){{
+  .kpi{{grid-template-columns:repeat(2,1fr)}}
+  .header{{padding:20px 0 28px}}
+  body{{padding:0 14px 50px}}
 }}
 </style>
 </head>
@@ -223,59 +347,62 @@ tr:first-child td{{border-top:none}}
 
 <div class="header">
   <div class="logo">NewsAlgo</div>
-  <div class="live">
-    <div class="pulse"></div>
-    Paper Trading
-  </div>
+  <div class="status"><div class="dot"></div>Paper Trading</div>
 </div>
 
 <div class="kpi">
   <div class="kpi-item">
     <div class="kpi-label">Balance</div>
     <div class="kpi-val" style="color:{bal_c}">¥{balance:,.0f}</div>
-    <div class="kpi-sub">Initial ¥1,000,000</div>
+    <div class="kpi-sub">init ¥1,000,000</div>
   </div>
   <div class="kpi-item">
     <div class="kpi-label">Return</div>
     <div class="kpi-val" style="color:{ret_c}">{rsign}{ret_pct:.2f}%</div>
-    <div class="kpi-sub">Realized {psign}¥{r_pnl:,.0f}</div>
+    <div class="kpi-sub">{psign}¥{r_pnl:,.0f} realized</div>
   </div>
   <div class="kpi-item">
     <div class="kpi-label">Win Rate</div>
     <div class="kpi-val">{win_rate:.1f}%</div>
-    <div class="kpi-sub">{wins}W / {losses}L / {trades} trades</div>
+    <div class="kpi-sub">{wins}W · {losses}L · {trades}T</div>
   </div>
   <div class="kpi-item">
-    <div class="kpi-label">News Collected</div>
+    <div class="kpi-label">News</div>
     <div class="kpi-val">{len(news):,}</div>
-    <div class="kpi-sub">{len(signals):,} signals generated</div>
+    <div class="kpi-sub">{len(signals):,} signals</div>
   </div>
 </div>
 
 <div class="block">
-  <div class="block-title">Open Positions</div>
-  <table>
-    <tr>
-      <th>Symbol</th><th>Qty</th><th>Avg Cost</th><th>Last</th><th>Unrealized</th>
-    </tr>
-    {pos_rows}
-  </table>
+  <div class="block-head"><div class="block-title">Open Positions</div></div>
+  <div class="block-body">
+    <table>
+      <thead><tr>
+        <th>Symbol</th><th>Qty</th><th>Avg Cost</th><th>Last</th><th>Unrealized</th>
+      </tr></thead>
+      <tbody>{pos_rows}</tbody>
+    </table>
+  </div>
 </div>
 
 <div class="block">
-  <div class="block-title">Recent Signals — Medium &amp; Strong</div>
-  <table>
-    <tr><th>Time</th><th>Level</th><th>Direction</th><th>Symbol</th><th>Score</th></tr>
-    {sig_rows}
-  </table>
+  <div class="block-head"><div class="block-title">Recent Signals — Med &amp; Strong</div></div>
+  <div class="block-body">
+    <table>
+      <thead><tr>
+        <th>Time</th><th>Level</th><th>Direction</th><th>Symbol</th><th>Score</th>
+      </tr></thead>
+      <tbody>{sig_rows}</tbody>
+    </table>
+  </div>
 </div>
 
 <div class="block">
-  <div class="block-title">News Sources</div>
+  <div class="block-head"><div class="block-title">News Sources</div></div>
   {src_html}
 </div>
 
-<div class="footer">Updated {now_jst()} &nbsp;·&nbsp; Auto-refresh every 5 min</div>
+<div class="footer">Updated&nbsp;{now_jst()}&nbsp;·&nbsp;Auto-refresh 5 min</div>
 
 </body>
 </html>"""
