@@ -1,16 +1,24 @@
 version: "3.9"
 
+# ローカル開発: docker compose up
+# 本番(VPS):   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
 services:
-  # ─────────────────────────────────────
+  # ─────────────────────────────────────────────────────
   # Redis: 重複排除キャッシュ（TTL 300秒）
-  # ─────────────────────────────────────
+  # ─────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: newsalgo-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
-    command: redis-server --save "" --appendonly no --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: >
+      redis-server
+      --save ""
+      --appendonly no
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -18,6 +26,50 @@ services:
       retries: 3
     volumes:
       - redis_data:/data
+
+  # ─────────────────────────────────────────────────────
+  # NewsAlgo スケジューラー
+  # 起動: docker compose up -d scheduler
+  # ─────────────────────────────────────────────────────
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: newsalgo-scheduler
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - TZ=Asia/Tokyo
+    volumes:
+      - ./logs:/app/logs
+    command: python3 scheduler.py
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import sys; sys.exit(0)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # ─────────────────────────────────────────────────────
+  # バックテスト（単発実行用）
+  # 使い方: docker compose run --rm backtest
+  # ─────────────────────────────────────────────────────
+  backtest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: newsalgo-backtest
+    profiles: ["tools"]
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./backtest_result.csv:/app/backtest_result.csv
+    command: python3 run_backtest.py --mode jsonl --csv
 
 volumes:
   redis_data:

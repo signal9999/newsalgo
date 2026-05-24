@@ -1,62 +1,57 @@
 #!/usr/bin/env python3
 """
-IBKR 接続テストスクリプト
+IBKR 接続テストスクリプト（ib_insync 0.9.86 対応）
 
 使い方:
-  python3 scripts/test_ibkr.py            # 接続テスト（スタブ or 実接続）
-  python3 scripts/test_ibkr.py --stub     # スタブモードで動作確認のみ
-  python3 scripts/test_ibkr.py --check    # 事前要件確認のみ
+  python3 scripts/test_ibkr.py            # 接続テスト（TWS 起動済みなら実接続）
+  python3 scripts/test_ibkr.py --stub     # スタブモードのみ
+  python3 scripts/test_ibkr.py --check    # 要件確認のみ
+  python3 scripts/test_ibkr.py --order    # テスト発注（ペーパートレード口座のみ）
 
-接続要件:
-  1. pip install ib_insync
-  2. TWS (Trader Workstation) を起動
-     - ペーパートレード口座でログイン
-     - File → Global Configuration → API → Settings
-       - Enable ActiveX and Socket Clients: ON
-       - Socket port: 7497
-       - Read-Only API: OFF（発注するため）
-  3. .env に追記（任意）:
-     IBKR_HOST=127.0.0.1
-     IBKR_PORT=7497
+TWS 起動手順:
+  1. TWS をダウンロード: https://www.interactivebrokers.com/en/trading/tws.php
+  2. ペーパートレード口座でログイン
+  3. File → Global Configuration → API → Settings
+     - Enable ActiveX and Socket Clients: ON
+     - Socket port: 7497
+     - Trusted IP Addresses に 127.0.0.1 を追加
+  4. python3 scripts/test_ibkr.py を実行
 """
 import sys
 import asyncio
 import argparse
 import os
+import socket
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import settings  # noqa
+from config import settings  # noqa: F401
 from execution.ibkr import IBKRBroker
 from execution.broker import Order
 
+_HOST = os.environ.get("IBKR_HOST", "127.0.0.1")
+_PORT = int(os.environ.get("IBKR_PORT", "7497"))
+
 
 def check_requirements() -> dict:
-    """事前要件チェック。"""
     results = {}
 
     # ib_insync インストール確認
     try:
         import ib_insync
-        results["ib_insync"] = f"✅ インストール済み (v{ib_insync.__version__})"
+        results["ib_insync"] = f"✅ ib_insync v{ib_insync.__version__} インストール済み"
     except ImportError:
         results["ib_insync"] = "❌ 未インストール → pip install ib_insync"
 
     # TWS ポート確認
-    import socket
-    host = os.environ.get("IBKR_HOST", "127.0.0.1")
-    port = int(os.environ.get("IBKR_PORT", "7497"))
     try:
-        with socket.create_connection((host, port), timeout=2):
-            results["tws"] = f"✅ TWS/IB Gateway が起動中 ({host}:{port})"
+        with socket.create_connection((_HOST, _PORT), timeout=2):
+            results["tws"] = f"✅ TWS/IB Gateway が起動中 ({_HOST}:{_PORT})"
     except (ConnectionRefusedError, OSError):
-        results["tws"] = f"❌ TWS/IB Gateway が起動していません ({host}:{port})"
+        results["tws"] = f"❌ TWS/IB Gateway が未起動 ({_HOST}:{_PORT})"
 
-    # 環境変数確認
-    results["env_host"] = f"IBKR_HOST={host}"
-    results["env_port"] = f"IBKR_PORT={port}"
-
+    results["env"] = f"IBKR_HOST={_HOST}  IBKR_PORT={_PORT}"
     return results
 
 
@@ -64,90 +59,102 @@ def print_requirements(results: dict):
     print("\n" + "=" * 54)
     print("  IBKR 接続要件チェック")
     print("=" * 54)
-    for k, v in results.items():
+    for v in results.values():
         print(f"  {v}")
-    print("=" * 54)
-    print()
+    print("=" * 54 + "\n")
 
 
 async def run_stub_test():
-    """スタブモードで動作確認（実際の接続なし）。"""
-    print("[IBKR-STUB] スタブモードテスト開始")
+    """スタブモード（TWS 不要）で動作確認。"""
+    print("─" * 50)
+    print("  IBKR スタブモード動作確認")
+    print("─" * 50)
 
     broker = IBKRBroker(paper=True)
-    # 接続しない（スタブとして動作）
 
-    test_order = Order(
-        symbol="7203",
-        side="buy",
-        quantity=100,
-        price=2800.0,
-        order_type="market",
-        signal_id="test-001",
-    )
+    orders = [
+        Order("7203", "buy",  100, 2800.0, "market", "test-buy-001"),
+        Order("6758", "sell", 50,  13000.0, "limit",  "test-sell-001"),
+    ]
 
-    print(f"[IBKR-STUB] テスト注文: {test_order.side} {test_order.symbol} × {test_order.quantity}")
-    result = await broker.submit_order(test_order)
-    print(f"[IBKR-STUB] 結果: status={result.status} order_id={result.order_id[:8]}...")
+    for o in orders:
+        result = await broker.submit_order(o)
+        print(f"  {o.side:5s} {o.symbol} ×{o.quantity:4.0f}  → "
+              f"status={result.status}  id={result.order_id[:8]}")
 
-    pos = await broker.get_position("7203")
-    print(f"[IBKR-STUB] ポジション: {pos}")
-
+    pos  = await broker.get_position("7203")
     acct = await broker.get_account()
-    print(f"[IBKR-STUB] 口座: {acct}")
+    print(f"\n  ポジション(7203): qty={pos['quantity']}  avg={pos['avg_price']}")
+    print(f"  口座情報: cash={acct['cash']:,.0f} {acct['currency']}")
+    print("\n  ✅ スタブモード OK\n")
 
-    print("[IBKR-STUB] ✅ スタブモードテスト完了\n")
 
+async def run_live_test(do_order: bool = False):
+    """TWS に実接続してテスト。"""
+    print("─" * 50)
+    print("  IBKR TWS 実接続テスト")
+    print("─" * 50)
 
-async def run_live_test():
-    """実際に TWS に接続してテスト（発注はしない）。"""
     broker = IBKRBroker(paper=True)
     connected = await broker.connect()
 
     if not connected:
-        print("❌ 接続失敗。スタブモードに切り替えます...")
+        print("  ❌ 接続失敗。スタブモードに切り替えます。\n")
         await run_stub_test()
         return
 
-    print("✅ IBKR TWS 接続成功！")
+    print("  ✅ TWS 接続成功！")
 
-    # 口座情報取得
+    # 口座情報
     acct = await broker.get_account()
-    print(f"  口座情報: 現金={acct.get('cash', 0):,.0f} {acct.get('currency', 'JPY')}")
-    print(f"  純資産  : {acct.get('net_liquidation', 0):,.0f} {acct.get('currency', 'JPY')}")
+    cash = acct.get("cash", 0)
+    nav  = acct.get("net_liquidation", 0)
+    ccy  = acct.get("currency", "JPY")
+    print(f"\n  現金残高  : {cash:>14,.0f} {ccy}")
+    print(f"  純資産    : {nav:>14,.0f} {ccy}")
 
-    # ポジション確認（7203=トヨタ）
-    pos = await broker.get_position("7203")
-    print(f"  7203(トヨタ) ポジション: {pos}")
+    # 既存ポジション確認
+    for sym in ["7203", "6758", "9984"]:
+        pos = await broker.get_position(sym)
+        if pos["quantity"] != 0:
+            print(f"  ポジション: {sym} × {pos['quantity']:.0f}  avg={pos['avg_price']:.1f}")
 
-    print("\n✅ 接続テスト完了（発注は行いませんでした）")
+    # テスト発注（ペーパートレードのみ・--order フラグ時）
+    if do_order:
+        print("\n  [発注テスト] 7203(トヨタ) × 1 株 成行買い")
+        order = Order("7203", "buy", 1, None, "market", "paper-test-001")
+        result = await broker.submit_order(order)
+        print(f"  結果: status={result.status}  fill_price={result.fill_price:.1f}")
+        print(f"  order_id: {result.order_id}")
+
+    print("\n  ✅ 実接続テスト完了")
     await broker.disconnect()
 
 
 def parse_args():
     p = argparse.ArgumentParser(description="IBKR 接続テスト")
-    p.add_argument("--stub",  action="store_true", help="スタブモードのみ（TWS 不要）")
+    p.add_argument("--stub",  action="store_true", help="スタブモードのみ")
     p.add_argument("--check", action="store_true", help="要件確認のみ")
+    p.add_argument("--order", action="store_true", help="テスト発注も実行（ペーパー限定）")
     return p.parse_args()
 
 
 async def main():
     args = parse_args()
-
     results = check_requirements()
     print_requirements(results)
 
     if args.check:
         return
 
-    if args.stub or "❌ 未インストール" in results.get("ib_insync", ""):
+    tws_up = "✅" in results.get("tws", "")
+
+    if args.stub or not tws_up:
+        if not args.stub and not tws_up:
+            print("  ⚠️  TWS 未起動のためスタブモードで実行します。\n")
         await run_stub_test()
     else:
-        if "❌" in results.get("tws", ""):
-            print("⚠️  TWS が起動していません。スタブモードで実行します。\n")
-            await run_stub_test()
-        else:
-            await run_live_test()
+        await run_live_test(do_order=args.order)
 
 
 if __name__ == "__main__":

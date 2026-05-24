@@ -46,6 +46,7 @@ async def test_paper_trade_buy():
     mock_logger = MagicMock()
     mock_logger.log_order = MagicMock()
     trader = PaperTrader(mock_logger)
+    trader.reset()  # 永続化ファイルをクリアして初期状態に
     order = Order("7203.T", "buy", 10, 2500.0, "market", "sig1")
     result = await trader.submit_order(order)
     assert result.status == "filled"
@@ -58,6 +59,7 @@ async def test_paper_trade_sell_pnl():
     mock_logger = MagicMock()
     mock_logger.log_order = MagicMock()
     trader = PaperTrader(mock_logger)
+    trader.reset()  # 永続化ファイルをクリアして初期状態に
     buy = Order("7203.T", "buy", 10, 2000.0, "market", "sig1")
     await trader.submit_order(buy)
     sell = Order("7203.T", "sell", 10, 2500.0, "market", "sig2")
