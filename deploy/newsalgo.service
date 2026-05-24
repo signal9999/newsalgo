@@ -1,0 +1,26 @@
+[Unit]
+Description=NewsAlgo - ニュース駆動型自動売買システム スケジューラー
+After=network-online.target redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/newsalgo
+ExecStart=/usr/bin/python3 /home/ubuntu/newsalgo/scheduler.py
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=newsalgo
+Environment=PYTHONUNBUFFERED=1
+
+# プロセスが30秒以内に停止しない場合は強制終了
+TimeoutStopSec=30
+
+# リソース制限
+MemoryLimit=512M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

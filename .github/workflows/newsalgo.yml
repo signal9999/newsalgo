@@ -28,11 +28,15 @@ jobs:
         run: |
           cat <<EOF > .env
           ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
           REDIS_URL=redis://localhost:6379
           PAPER_TRADE=true
           MAX_POSITION_PCT=0.05
           DAILY_LOSS_LIMIT_PCT=0.10
-          SIGNAL_THRESHOLD=0.6
+          SIGNAL_THRESHOLD=0.7
+          SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}
+          LINE_NOTIFY_TOKEN=${{ secrets.LINE_NOTIFY_TOKEN }}
           EOF
 
       - name: Run NewsAlgo (30min timeout)

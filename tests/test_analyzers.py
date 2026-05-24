@@ -33,8 +33,10 @@ def test_signal_strong():
     assert result["score"] >= 0.8
 
 def test_signal_medium():
-    result = compute_signal(0.9, 0.8, 0.85, "bearish")
+    # score = 0.9 * 0.9 * 0.90 = 0.729 → SIGNAL_THRESHOLD(0.7) 以上 < 0.8 → MEDIUM
+    result = compute_signal(0.9, 0.9, 0.90, "bearish")
     assert result["level"] in ("STRONG", "MEDIUM")
+    assert result["score"] >= 0.7
 
 def test_signal_none():
     result = compute_signal(0.3, 0.2, 0.1, "neutral")
