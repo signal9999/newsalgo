@@ -117,28 +117,31 @@ class SupabaseLogger:
     # 非同期バリアント（async/await コンテキストから呼ぶ場合）
     # ------------------------------------------------------------------
 
-    async def alog_news(self, item: dict):
+    async def alog_news(self, item: dict) -> bool:
         if self.use_supabase:
             ok = await self._insert("news_log", item)
             if not ok:
                 self._fallback.log_news(item)
-        else:
-            self._fallback.log_news(item)
+            return ok
+        self._fallback.log_news(item)
+        return True
 
-    async def alog_signal(self, signal: dict):
+    async def alog_signal(self, signal: dict) -> bool:
         if signal.get("level") == "NONE":
-            return
+            return True
         if self.use_supabase:
             ok = await self._insert("signal_log", signal)
             if not ok:
                 self._fallback.log_signal(signal)
-        else:
-            self._fallback.log_signal(signal)
+            return ok
+        self._fallback.log_signal(signal)
+        return True
 
-    async def alog_order(self, order: dict):
+    async def alog_order(self, order: dict) -> bool:
         if self.use_supabase:
             ok = await self._insert("order_log", order)
             if not ok:
                 self._fallback.log_order(order)
-        else:
-            self._fallback.log_order(order)
+            return ok
+        self._fallback.log_order(order)
+        return True
