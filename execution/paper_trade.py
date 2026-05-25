@@ -12,10 +12,17 @@ from datetime import datetime, timezone
 _price_cache: dict = {}  # symbol → (price, fetched_at)
 
 from execution.broker import BrokerBase, Order, OrderResult
+from config.settings import COMMISSION_RATE, COMMISSION_MIN
 
 logger = logging.getLogger(__name__)
 
 INITIAL_BALANCE = 1_000_000.0
+
+
+def _calc_commission(fill_price: float, quantity: float) -> float:
+    """取引手数料を計算する（片道）。"""
+    trade_value = fill_price * quantity
+    return max(COMMISSION_MIN, trade_value * COMMISSION_RATE)
 # デフォルト状態保存先（後方互換）
 _STATE_FILE = Path(__file__).parent.parent / "logs" / "paper_state.json"
 
@@ -83,12 +90,28 @@ class PaperTrader(BrokerBase):
     # ------------------------------------------------------------------
 
     async def submit_order(self, order: Order) -> OrderResult:
-        order_id   = str(uuid.uuid4())
-        fill_price = order.price if order.price is not None else 0.0
-        pnl        = 0.0
+        order_id = str(uuid.uuid4())
+        pnl      = 0.0
+
+        # 成行注文は現在値をフェッチ + スリッページ（0.1%）を加算
+        if order.price is not None:
+            fill_price = order.price
+        else:
+            raw_price  = self._fetch_price(order.symbol)
+            if raw_price <= 0.0:
+                logger.warning("[PT] 価格取得失敗: %s → 注文スキップ", order.symbol)
+                return OrderResult(
+                    order_id=order_id, symbol=order.symbol, side=order.side,
+                    quantity=order.quantity, fill_price=0.0, status="rejected",
+                    reason="price_unavailable",
+                )
+            slippage   = 0.001  # 0.1%（成行のスリッページ想定）
+            fill_price = raw_price * (1 + slippage if order.side == "buy" else 1 - slippage)
+
+        commission = _calc_commission(fill_price, order.quantity)
 
         if order.side == "buy":
-            cost = fill_price * order.quantity
+            cost = fill_price * order.quantity + commission
             self.balance -= cost
             pos       = self.positions.get(order.symbol, {"quantity": 0.0, "avg_price": 0.0})
             total_qty = pos["quantity"] + order.quantity
@@ -101,9 +124,9 @@ class PaperTrader(BrokerBase):
         elif order.side == "sell":
             pos      = self.positions.get(order.symbol, {"quantity": 0.0, "avg_price": 0.0})
             sold_qty = min(order.quantity, pos["quantity"])
-            pnl      = (fill_price - pos["avg_price"]) * sold_qty
+            pnl      = (fill_price - pos["avg_price"]) * sold_qty - commission
             self.realized_pnl += pnl
-            self.balance      += fill_price * sold_qty
+            self.balance      += fill_price * sold_qty - commission
             remaining          = pos["quantity"] - sold_qty
             if remaining <= 0:
                 self.positions.pop(order.symbol, None)
@@ -111,6 +134,8 @@ class PaperTrader(BrokerBase):
                 self.positions[order.symbol] = {
                     "quantity": remaining, "avg_price": pos["avg_price"]
                 }
+        else:
+            commission = 0.0
 
         result = OrderResult(
             order_id=order_id,
@@ -128,10 +153,11 @@ class PaperTrader(BrokerBase):
         # ログ記録
         log_data = {
             **result.__dict__,
-            "pnl":         pnl,
-            "balance":     self.balance,
+            "pnl":          pnl,
+            "commission":   commission,
+            "balance":      self.balance,
             "realized_pnl": self.realized_pnl,
-            "timestamp":   datetime.now(timezone.utc).isoformat(),
+            "timestamp":    datetime.now(timezone.utc).isoformat(),
         }
         try:
             if self._logger:
@@ -143,9 +169,9 @@ class PaperTrader(BrokerBase):
             pass
 
         logger.info(
-            "[PT] %s %s ×%d  fill=%.1f  pnl=%+.0f  balance=¥%,.0f",
+            "[PT] %s %s ×%d  fill=%.1f  commission=¥%.0f  pnl=%+.0f  balance=¥%,.0f",
             order.side, order.symbol, int(order.quantity),
-            fill_price, pnl, self.balance
+            fill_price, commission, pnl, self.balance
         )
         return result
 

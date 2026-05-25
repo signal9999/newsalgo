@@ -13,6 +13,12 @@ MAX_POSITION_PCT = float(os.getenv("MAX_POSITION_PCT", "0.05"))
 DAILY_LOSS_LIMIT_PCT = float(os.getenv("DAILY_LOSS_LIMIT_PCT", "0.10"))
 SIGNAL_THRESHOLD = float(os.getenv("SIGNAL_THRESHOLD", "0.7"))
 
+# ── 取引コスト設定 ─────────────────────────────────────────────────────────────
+# IBKR 日本株: 0.08%（最低 ¥80/注文）
+# 実ブローカーに合わせて .env で上書き可能
+COMMISSION_RATE = float(os.getenv("COMMISSION_RATE", "0.0008"))  # 約定金額の0.08%
+COMMISSION_MIN  = float(os.getenv("COMMISSION_MIN",  "80"))      # 最低手数料（円）
+
 RSS_FEEDS = {
     "nhk_top":       "https://www3.nhk.or.jp/rss/news/cat0.xml",
     "nhk_economy":   "https://www3.nhk.or.jp/rss/news/cat6.xml",
