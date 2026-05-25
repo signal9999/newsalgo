@@ -18,6 +18,7 @@ Interactive Brokers (IBKR) ブローカーアダプター
 """
 
 import asyncio
+import os
 import uuid
 import logging
 from typing import Optional
@@ -26,11 +27,11 @@ from execution.broker import BrokerBase, Order, OrderResult
 
 logger = logging.getLogger(__name__)
 
-# IBKR 接続設定（.env から読み込むことが望ましい）
-_IBKR_HOST = "127.0.0.1"
-_IBKR_PORT_PAPER = 7497  # ペーパートレード
-_IBKR_PORT_LIVE  = 7496  # 本番口座
-_IBKR_CLIENT_ID  = 1
+# IBKR 接続設定（.env / 環境変数から読み込む）
+_IBKR_HOST       = os.environ.get("IBKR_HOST", "127.0.0.1")
+_IBKR_PORT_PAPER = int(os.environ.get("IBKR_PORT", "4002"))  # IB Gateway paper
+_IBKR_PORT_LIVE  = int(os.environ.get("IBKR_PORT_LIVE", "4001"))  # IB Gateway live
+_IBKR_CLIENT_ID  = int(os.environ.get("IBKR_CLIENT_ID", "1"))
 
 # 東証コード → IBKR コントラクト変換
 # IBKR は東証銘柄を "symbol.T" ではなく "symbol" + exchange="TSE" + currency="JPY" で扱う
@@ -41,7 +42,8 @@ def _make_contract(symbol: str):
     """
     try:
         from ib_insync import Stock
-        return Stock(symbol, "TSE", "JPY")
+        # SMART ルーティング + 東証銘柄。qualify後に primaryExchange=TSEJ が自動設定される
+        return Stock(symbol, "SMART", "JPY")
     except ImportError:
         return None
 
@@ -60,20 +62,21 @@ class IBKRBroker(BrokerBase):
         self._connected = False
 
     async def connect(self) -> bool:
-        """TWS/IB Gateway に接続する。"""
+        """TWS/IB Gateway に非同期接続する。"""
         try:
-            from ib_insync import IB
+            from ib_insync import IB, util
+            util.patchAsyncio()          # asyncio イベントループとの互換パッチ
             self._ib = IB()
-            await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self._ib.connect(_IBKR_HOST, self._port, clientId=_IBKR_CLIENT_ID)
+            await self._ib.connectAsync(
+                _IBKR_HOST, self._port,
+                clientId=_IBKR_CLIENT_ID,
+                timeout=10,
             )
             self._connected = True
             logger.info("IBKR 接続成功: host=%s port=%s paper=%s", _IBKR_HOST, self._port, self._paper)
             return True
         except ImportError:
             logger.warning("ib_insync が未インストールです。スタブモードで動作します。")
-            logger.warning("インストール: pip install ib_insync")
             return False
         except Exception as e:
             logger.error("IBKR 接続失敗: %s", e)
@@ -118,9 +121,7 @@ class IBKRBroker(BrokerBase):
                 raise RuntimeError("コントラクト生成失敗")
 
             # コントラクト詳細を取得
-            await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self._ib.qualifyContracts(contract)
-            )
+            await self._ib.qualifyContractsAsync(contract)
 
             # 注文種別
             action = "BUY" if order.side == "buy" else "SELL"

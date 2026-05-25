@@ -33,7 +33,9 @@ class DecisionEngine:
             return {"action": "skip", "reason": "no_affected_symbols"}
 
         side = "buy" if signal["direction"] == "bullish" else "sell"
-        qty = risk_check["position_size"] / 1000
+        # 東証の売買単位は100株。100株単位に切り捨て（最低100株）
+        raw_qty = risk_check["position_size"] / 1000
+        qty = max(100, int(raw_qty / 100) * 100)
 
         orders = []
         for symbol in symbols[:3]:

@@ -121,8 +121,8 @@ async def run_live_test(do_order: bool = False):
 
     # テスト発注（ペーパートレードのみ・--order フラグ時）
     if do_order:
-        print("\n  [発注テスト] 7203(トヨタ) × 1 株 成行買い")
-        order = Order("7203", "buy", 1, None, "market", "paper-test-001")
+        print("\n  [発注テスト] 7203(トヨタ) × 100 株（1単元）成行買い")
+        order = Order("7203", "buy", 100, None, "market", "paper-test-001")
         result = await broker.submit_order(order)
         print(f"  結果: status={result.status}  fill_price={result.fill_price:.1f}")
         print(f"  order_id: {result.order_id}")
