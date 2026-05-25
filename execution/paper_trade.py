@@ -16,13 +16,16 @@ from execution.broker import BrokerBase, Order, OrderResult
 logger = logging.getLogger(__name__)
 
 INITIAL_BALANCE = 1_000_000.0
-# 状態保存先
+# デフォルト状態保存先（後方互換）
 _STATE_FILE = Path(__file__).parent.parent / "logs" / "paper_state.json"
 
 
 class PaperTrader(BrokerBase):
-    def __init__(self, logger_obj=None):
+    def __init__(self, logger_obj=None, state_file: Path = None,
+                 initial_balance: float = INITIAL_BALANCE):
         self._logger = logger_obj
+        self._state_file = state_file or _STATE_FILE
+        self._initial_balance = initial_balance
         self._load_state()
 
     # ------------------------------------------------------------------
@@ -31,11 +34,11 @@ class PaperTrader(BrokerBase):
 
     def _load_state(self):
         """JSON ファイルから前回の状態を復元する。"""
-        if _STATE_FILE.exists():
+        if self._state_file.exists():
             try:
-                with open(_STATE_FILE, encoding="utf-8") as f:
+                with open(self._state_file, encoding="utf-8") as f:
                     state = json.load(f)
-                self.balance       = float(state.get("balance",      INITIAL_BALANCE))
+                self.balance       = float(state.get("balance",      self._initial_balance))
                 self.realized_pnl  = float(state.get("realized_pnl", 0.0))
                 self.positions     = state.get("positions", {})
                 self.orders: list  = []
@@ -46,14 +49,14 @@ class PaperTrader(BrokerBase):
                 logger.warning("状態ファイルの読み込み失敗（リセット）: %s", e)
 
         # 初期状態
-        self.balance      = INITIAL_BALANCE
+        self.balance      = self._initial_balance
         self.realized_pnl = 0.0
         self.positions: dict = {}
         self.orders: list    = []
 
     def _save_state(self):
         """現在の状態を JSON ファイルに保存する。"""
-        _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        self._state_file.parent.mkdir(parents=True, exist_ok=True)
         state = {
             "balance":      self.balance,
             "realized_pnl": self.realized_pnl,
@@ -61,18 +64,18 @@ class PaperTrader(BrokerBase):
             "updated_at":   datetime.now(timezone.utc).isoformat(),
         }
         try:
-            with open(_STATE_FILE, "w", encoding="utf-8") as f:
+            with open(self._state_file, "w", encoding="utf-8") as f:
                 json.dump(state, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.warning("状態ファイルの保存失敗: %s", e)
 
     def reset(self):
         """ポジションと残高を初期化する（テスト用）。"""
-        self.balance      = INITIAL_BALANCE
+        self.balance      = self._initial_balance
         self.realized_pnl = 0.0
         self.positions    = {}
         self.orders       = []
-        _STATE_FILE.unlink(missing_ok=True)
+        self._state_file.unlink(missing_ok=True)
         logger.info("ペーパートレード状態をリセットしました")
 
     # ------------------------------------------------------------------

@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from engine.orchestrator import Orchestrator
+from engine.multi_orchestrator import MultiOrchestrator
 from config.settings import PAPER_TRADE
 
 
@@ -13,12 +13,13 @@ async def main():
     mode = "PAPER TRADE" if PAPER_TRADE else "LIVE TRADE"
     print(f"[NewsAlgo] Starting in {mode} mode")
 
-    orchestrator = Orchestrator()
+    orchestrator = MultiOrchestrator()
 
     loop = asyncio.get_running_loop()
 
     def _shutdown():
         print("\n[NewsAlgo] Shutting down...")
+        orchestrator.summary()
         asyncio.ensure_future(orchestrator.stop())
         for task in asyncio.all_tasks(loop):
             task.cancel()
