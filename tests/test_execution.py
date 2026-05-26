@@ -65,4 +65,7 @@ async def test_paper_trade_sell_pnl():
     sell = Order("7203.T", "sell", 10, 2500.0, "market", "sig2")
     await trader.submit_order(sell)
     account = await trader.get_account()
-    assert account["realized_pnl"] == pytest.approx(5000.0, rel=0.01)
+    # 粗利: (2500-2000)*10 = 5000
+    # 売り手数料: max(80, 2500*10*0.0008) = max(80, 20) = 80
+    # 実現損益: 5000 - 80 = 4920
+    assert account["realized_pnl"] == pytest.approx(4920.0, rel=0.01)
