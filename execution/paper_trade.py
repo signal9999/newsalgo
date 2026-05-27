@@ -27,12 +27,18 @@ def _calc_commission(fill_price: float, quantity: float) -> float:
 _STATE_FILE = Path(__file__).parent.parent / "logs" / "paper_state.json"
 
 
+_REJECTION_ALERT_THRESHOLD = 5    # 連続リジェクト数でアラート
+_REJECTION_ALERT_INTERVAL  = 300  # 同一アラートの再送間隔（秒）
+
+
 class PaperTrader(BrokerBase):
     def __init__(self, logger_obj=None, state_file: Path = None,
                  initial_balance: float = INITIAL_BALANCE):
         self._logger = logger_obj
         self._state_file = state_file or _STATE_FILE
         self._initial_balance = initial_balance
+        self._consecutive_rejections = 0    # 連続 price_unavailable カウンター
+        self._last_rejection_alert   = 0.0  # 最後にアラートを送った時刻（Unix秒）
         self._load_state()
 
     # ------------------------------------------------------------------
@@ -82,8 +88,39 @@ class PaperTrader(BrokerBase):
         self.realized_pnl = 0.0
         self.positions    = {}
         self.orders       = []
+        self._consecutive_rejections = 0
+        self._last_rejection_alert   = 0.0
         self._state_file.unlink(missing_ok=True)
         logger.info("ペーパートレード状態をリセットしました")
+
+    def _handle_price_unavailable(self, symbol: str):
+        """
+        連続 price_unavailable リジェクトを追跡し、
+        閾値超えで AlertManager に CRITICAL を送る。
+        """
+        import time
+        self._consecutive_rejections += 1
+        count = self._consecutive_rejections
+
+        if count >= _REJECTION_ALERT_THRESHOLD:
+            now = time.time()
+            if now - self._last_rejection_alert >= _REJECTION_ALERT_INTERVAL:
+                self._last_rejection_alert = now
+                try:
+                    from monitor.alert import AlertManager
+                    AlertManager().send_alert(
+                        "CRITICAL",
+                        f"🚨 価格取得連続失敗: {count}件リジェクト済み",
+                        {
+                            "symbol":   symbol,
+                            "count":    count,
+                            "impact":   "全注文がリジェクトされています（取引停止状態）",
+                            "check":    "Yahoo Finance API / ネットワーク接続を確認",
+                        },
+                    )
+                    logger.error("[PT] 価格取得連続失敗アラート送信: %d件", count)
+                except Exception as e:
+                    logger.warning("[PT] アラート送信失敗: %s", e)
 
     # ------------------------------------------------------------------
     # BrokerBase 実装
@@ -100,11 +137,13 @@ class PaperTrader(BrokerBase):
             raw_price  = self._fetch_price(order.symbol)
             if raw_price <= 0.0:
                 logger.warning("[PT] 価格取得失敗: %s → 注文スキップ", order.symbol)
+                self._handle_price_unavailable(order.symbol)
                 return OrderResult(
                     order_id=order_id, symbol=order.symbol, side=order.side,
                     quantity=order.quantity, fill_price=0.0, status="rejected",
                     reason="price_unavailable",
                 )
+            self._consecutive_rejections = 0  # 成功したらリセット
             slippage   = 0.001  # 0.1%（成行のスリッページ想定）
             fill_price = raw_price * (1 + slippage if order.side == "buy" else 1 - slippage)
 
