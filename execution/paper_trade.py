@@ -181,22 +181,29 @@ class PaperTrader(BrokerBase):
 
     @staticmethod
     def _fetch_price(symbol: str) -> float:
-        """yfinance で現在値を取得。失敗時は 0.0。TTL 60秒のキャッシュ付き。"""
-        import time
+        """Yahoo Finance JSON API で現在値を取得（numpy不要・Mixhost対応）。
+        TTL 60秒のキャッシュ付き。日本株は自動的に .T サフィックスを付与。
+        """
+        import time, urllib.request
         now = time.time()
         cached = _price_cache.get(symbol)
         if cached and now - cached[1] < 60:
             return cached[0]
         try:
-            import yfinance as yf
-            hist = yf.Ticker(symbol).history(period="2d")
-            if hist.empty:
-                return 0.0
-            raw = hist["Close"].iloc[-1]
-            price = float(raw.iloc[0]) if hasattr(raw, "iloc") else float(raw)
-            _price_cache[symbol] = (price, now)
+            # 日本株（4桁数字）は .T サフィックスが必要
+            ticker = symbol if "." in symbol else (f"{symbol}.T" if symbol.isdigit() and len(symbol) <= 5 else symbol)
+            url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+                   f"?interval=1m&range=1d")
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+            meta  = data["chart"]["result"][0]["meta"]
+            price = float(meta.get("regularMarketPrice") or meta.get("previousClose") or 0)
+            if price > 0:
+                _price_cache[symbol] = (price, now)
             return price
-        except Exception:
+        except Exception as e:
+            logger.debug("価格取得失敗 %s: %s", symbol, e)
             return 0.0
 
     async def get_position(self, symbol: str) -> dict:
