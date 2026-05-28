@@ -63,14 +63,13 @@ def _extract_row(tds):
     """
     TDnet の <tr> 内の <td> リストから開示情報を抽出する。
 
-    TDnet テーブル列順（参考）:
-      [0] 時刻 (HH:MM)
-      [1] コード (4桁)
-      [2] 会社名
-      [3] 表題 (aタグ付き)
-      [4] XBRL など（任意）
+    TDnet は CSS クラスで列を明示している:
+      kjTime  → 時刻 (HH:MM)
+      kjCode  → 証券コード（4〜5桁: TDnet内部コードは5桁なので先頭4桁を使用）
+      kjName  → 会社名
+      kjTitle → 表題（aタグ付き）
 
-    実際の列位置は可変なため、内容で判定する。
+    CSS クラス優先、フォールバックとして内容パターン判定。
     """
     time_str = ""
     code = ""
@@ -78,38 +77,45 @@ def _extract_row(tds):
     title = ""
     href = ""
 
-    texts = [td.get_text(strip=True) for td in tds]
-
-    # 時刻: HH:MM 形式の最初の td
-    for text in texts:
-        if _TIME_RE.match(text):
-            time_str = text
-            break
-
-    # 証券コード: 4桁数字の td
-    for text in texts:
-        if _CODE_RE.match(text):
-            code = text
-            break
-
-    # タイトルリンク: aタグを持つ td
     for td in tds:
-        a = td.find("a", href=True)
-        if a and a.get_text(strip=True):
-            title = a.get_text(strip=True)
-            href = a["href"]
-            break
+        classes = td.get("class", [])
+        text = td.get_text(strip=True)
 
-    # 会社名: コードの直後にある、リンクなし・時刻でもない td
-    code_found = False
-    for i, text in enumerate(texts):
-        if _CODE_RE.match(text):
-            code_found = True
-            continue
-        if code_found:
-            td = tds[i] if i < len(tds) else None
-            if td and not td.find("a") and text and not _TIME_RE.match(text):
-                company = text
+        if "kjTime" in classes:
+            time_str = text
+
+        elif "kjCode" in classes:
+            # TDnet の内部コードは 5 桁（例: 39220 → 株式コード 3922）
+            # 数字だけ取り出して先頭 4 桁を証券コードとして使う
+            digits = re.sub(r"\D", "", text)
+            if len(digits) >= 4:
+                code = digits[:4]
+            elif digits:
+                code = digits  # 4桁未満はそのまま（ETF等）
+
+        elif "kjName" in classes:
+            company = text
+
+        elif "kjTitle" in classes:
+            a = td.find("a", href=True)
+            if a and a.get_text(strip=True):
+                title = a.get_text(strip=True)
+                href = a["href"]
+
+    # CSS クラスで取れなかった場合のフォールバック（旧形式）
+    if not title:
+        for td in tds:
+            a = td.find("a", href=True)
+            if a and a.get_text(strip=True):
+                title = a.get_text(strip=True)
+                href = a["href"]
+                break
+
+    if not code:
+        texts = [td.get_text(strip=True) for td in tds]
+        for text in texts:
+            if _CODE_RE.match(text):
+                code = text
                 break
 
     if not title or not href:

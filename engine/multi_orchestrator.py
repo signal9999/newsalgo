@@ -80,10 +80,23 @@ class StrategyRunner:
             return False
         return True
 
-    def build_signal(self, base_signal: dict, llm_result: dict) -> dict:
-        """逆張り戦略の場合、方向を反転させたシグナルを返す。"""
+    def build_signal(self, base_signal: dict, llm_result: dict, item: dict = None) -> dict:
+        """逆張り戦略の場合、方向を反転させたシグナルを返す。
+
+        銘柄コードの優先順位:
+          1. item["affected_symbols"] — TDnet が直接提供するコード（最も信頼性高）
+          2. llm_result["affected_symbols"] — LLM が本文から抽出したコード
+        重複を除去して結合する。
+        """
         signal = dict(base_signal)
-        signal["affected_symbols"] = llm_result.get("affected_symbols", [])
+
+        # item 由来のシンボル（TDnetコード等）を優先し、LLMの結果を補完に使う
+        item_symbols = list(item.get("affected_symbols", [])) if item else []
+        llm_symbols  = llm_result.get("affected_symbols", [])
+        # 重複除去しながら item 優先で結合
+        merged = list(dict.fromkeys(item_symbols + llm_symbols))
+        signal["affected_symbols"] = merged
+
         if self.cfg.contrarian:
             signal["direction"] = (
                 "bearish" if base_signal["direction"] == "bullish" else "bullish"
@@ -156,7 +169,7 @@ class MultiOrchestrator:
             tasks = []
             for runner in self.runners:
                 if runner.should_process(item, llm_result, score):
-                    signal = runner.build_signal(base_signal, llm_result)
+                    signal = runner.build_signal(base_signal, llm_result, item)
                     runner.logger.log_signal({
                         **signal,
                         "strategy": runner.cfg.id,
