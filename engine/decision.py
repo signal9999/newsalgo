@@ -1,6 +1,7 @@
 from execution.risk import RiskManager
 from execution.paper_trade import PaperTrader
 from execution.broker import Order
+from execution.liquidity import check_liquidity
 from monitor.logger import StructuredLogger
 from monitor.alert import AlertManager
 import uuid
@@ -37,6 +38,17 @@ class DecisionEngine:
 
         orders = []
         for symbol in symbols[:3]:
+            # ── 流動性チェック ─────────────────────────────────────────────
+            liq = check_liquidity(symbol)
+            if not liq["liquid"]:
+                self.logger.log_error("liquidity_rejected", {
+                    "symbol":       symbol,
+                    "reason":       liq["reason"],
+                    "avg_turnover": liq["avg_turnover"],
+                    "avg_volume":   liq["avg_volume"],
+                })
+                continue
+
             # ── 重複エントリー防止 ─────────────────────────────────────────
             existing = await self.broker.get_position(symbol)
             if side == "buy" and existing["quantity"] > 0:

@@ -19,6 +19,12 @@ SIGNAL_THRESHOLD = float(os.getenv("SIGNAL_THRESHOLD", "0.7"))
 COMMISSION_RATE = float(os.getenv("COMMISSION_RATE", "0.0008"))  # 約定金額の0.08%
 COMMISSION_MIN  = float(os.getenv("COMMISSION_MIN",  "80"))      # 最低手数料（円）
 
+# ── 流動性フィルター設定 ──────────────────────────────────────────────────────
+# 平均売買代金（直近20営業日）が以下を下回る銘柄は発注しない
+MIN_DAILY_TURNOVER = float(os.getenv("MIN_DAILY_TURNOVER", "500000000"))  # デフォルト5億円
+# 平均出来高（株数）が以下を下回る銘柄も除外
+MIN_AVG_VOLUME     = float(os.getenv("MIN_AVG_VOLUME",     "100000"))     # デフォルト10万株
+
 RSS_FEEDS = {
     "nhk_top":       "https://www3.nhk.or.jp/rss/news/cat0.xml",
     "nhk_economy":   "https://www3.nhk.or.jp/rss/news/cat6.xml",
