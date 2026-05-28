@@ -1,6 +1,6 @@
 # NewsAlgo ナレッジ文書 v9
 
-> 最終更新: 2026-05-25 | 開発者: @signal9media
+> 最終更新: 2026-05-28 | 開発者: @signal9media
 
 ---
 
@@ -285,6 +285,8 @@ LINE_NOTIFY_TOKEN=
 | 〜2026-05-23 | Phase 1-2: パイプライン・バックテスト・Mixhost本番稼働 |
 | 2026-05-24 | 自律戦略レビュー・GHA・Scheduled Agent・Webダッシュボード |
 | **2026-05-25** | **IBKR接続・4戦略並列・手数料/スリッページ・監査エージェント** |
+| **2026-05-27** | **yfinance→Yahoo Finance JSON API置換・起動時ヘルスチェック追加** |
+| **2026-05-28** | **TDnetコード抽出バグ修正・連続リジェクト検知追加** |
 
 ### 2026-05-25 の主要実装
 
@@ -307,3 +309,51 @@ LINE_NOTIFY_TOKEN=
 
 5. **Mixhostクロン時間修正**
    - 夜間（23:00〜06:30）→ 東証時間（08:00〜15:30）
+
+### 2026-05-27〜28 のバグ修正（重要）
+
+> ⚠️ これらは「静かに全注文がリジェクトされる」種類のバグ。ダッシュボードの残高が変わらないことで気づいた。
+
+#### バグ1: yfinance が Mixhost で動かない（5/27修正）
+
+- **原因**: yfinance → numpy → OpenBLAS がMixhostのスレッド数制限で import 失敗
+- **症状**: 全注文 `status: "rejected" / reason: "price_unavailable"`
+- **修正**: `execution/paper_trade.py` の `_fetch_price()` を `urllib` + Yahoo Finance JSON API に差し替え
+- **教訓**: Mixhostで numpy 系ライブラリは使えない。純粋Python + 標準ライブラリで代替する。
+
+```python
+# 修正後（numpy不要）
+url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1m&range=1d"
+req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+with urllib.request.urlopen(req, timeout=5) as resp:
+    data = json.loads(resp.read())
+price = float(data["chart"]["result"][0]["meta"].get("regularMarketPrice") or 0)
+```
+
+#### バグ2: TDnetの証券コードが取れない（5/28修正）
+
+- **原因**: TDnetのHTMLは `kjCode` CSSクラスを使用し、コードが **5桁**（例: `39220`）
+  - 旧コードの正規表現 `^\d{4}$` は4桁のみマッチ → 全件 `code: ""`
+- **症状**: `affected_symbols: []` → `decision.py` でスキップ → 発注ゼロ
+- **修正**: `collectors/tdnet.py` の `_extract_row()` をCSSクラスベースに書き替え
+  - `kjCode` クラスのTDから取得、`digits[:4]` で4桁に正規化
+- **教訓**: TDnetのHTMLはCSSクラスで列を識別する。正規表現パターンより CSS クラス（`kjTime/kjCode/kjName/kjTitle`）を使う。
+
+```python
+# TDnet の正しい抽出方法
+for td in tds:
+    classes = td.get("class", [])
+    if "kjCode" in classes:
+        digits = re.sub(r"\D", "", td.get_text(strip=True))
+        code = digits[:4]  # 5桁 → 4桁に正規化
+    elif "kjName" in classes:
+        company = td.get_text(strip=True)
+```
+
+#### 追加した監視機能（再発防止）
+
+| 機能 | 場所 | 動作 |
+|---|---|---|
+| 起動時ヘルスチェック | `main.py` | 7203.T / 9984.T の価格取得をテスト。取引時間中に失敗 → CRITICAL アラート＋exit(1) |
+| 連続リジェクト検知 | `execution/paper_trade.py` | 5回連続 `price_unavailable` → CRITICAL アラート（5分間隔で再送） |
+| シンボル優先順位 | `engine/multi_orchestrator.py` | TDnetコード（item）> LLM抽出 の順で使用・マージ |
