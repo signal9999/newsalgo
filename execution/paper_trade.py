@@ -151,6 +151,17 @@ class PaperTrader(BrokerBase):
 
         if order.side == "buy":
             cost = fill_price * order.quantity + commission
+            # ── 残高チェック（マイナス残高防止）────────────────────────────
+            if cost > self.balance:
+                logger.warning(
+                    "[PT] 残高不足: 必要=¥%.0f  残高=¥%.0f → %s スキップ",
+                    cost, self.balance, order.symbol,
+                )
+                return OrderResult(
+                    order_id=order_id, symbol=order.symbol, side=order.side,
+                    quantity=order.quantity, fill_price=fill_price, status="rejected",
+                    reason="insufficient_funds",
+                )
             self.balance -= cost
             pos       = self.positions.get(order.symbol, {"quantity": 0.0, "avg_price": 0.0})
             total_qty = pos["quantity"] + order.quantity
